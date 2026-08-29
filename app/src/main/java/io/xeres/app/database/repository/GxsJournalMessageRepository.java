@@ -1,0 +1,64 @@
+/*
+ * Copyright (c) 2026 by David Gerber - https://zapek.com
+ *
+ * This file is part of Xeres.
+ *
+ * Xeres is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Xeres is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Xeres.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+package io.xeres.app.database.repository;
+
+import io.xeres.app.xrs.service.journal.item.JournalMessageItem;
+import io.xeres.common.id.GxsId;
+import io.xeres.common.id.MsgId;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+
+@Transactional(readOnly = true)
+public interface GxsJournalMessageRepository extends JpaRepository<JournalMessageItem, Long>
+{
+	Optional<JournalMessageItem> findByGxsIdAndMsgId(GxsId gxsId, MsgId msgId);
+
+	Page<JournalMessageItem> findAllByHiddenFalse(Pageable pageable);
+
+	Page<JournalMessageItem> findAllByGxsIdAndHiddenFalse(GxsId gxsId, Pageable pageable);
+
+	Page<JournalMessageItem> findAllByHiddenFalseAndTitleContainingIgnoreCase(Pageable pageable, String title);
+
+	List<JournalMessageItem> findAllByGxsIdAndPublishedAfterAndHiddenFalse(GxsId gxsId, Instant since);
+
+	List<JournalMessageItem> findAllByGxsIdAndMsgIdIn(GxsId gxsId, Set<MsgId> msgIds);
+
+	List<JournalMessageItem> findAllByGxsIdAndMsgIdInAndHiddenFalse(GxsId gxsId, Set<MsgId> msgIds);
+
+	List<JournalMessageItem> findAllByMsgIdInAndHiddenFalse(Set<MsgId> msgIds);
+
+	@Query("SELECT COUNT(m.id) FROM journal_message m WHERE m.gxsId = :gxsId AND m.read = false AND m.hidden = false")
+	int countUnreadMessages(@Param("gxsId") GxsId gxsId);
+
+	@Modifying
+	@Transactional
+	@Query("UPDATE journal_message m SET m.read = :read WHERE m.gxsId = :gxsId AND m.read != :read")
+	void setAllGroupMessagesReadState(GxsId gxsId, boolean read);
+}

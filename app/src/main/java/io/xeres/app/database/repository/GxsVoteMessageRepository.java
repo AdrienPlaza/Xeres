@@ -32,4 +32,12 @@ import java.util.Set;
 public interface GxsVoteMessageRepository extends JpaRepository<VoteMessageItem, Long>
 {
 	List<VoteMessageItem> findAllByGxsIdAndMsgIdIn(GxsId gxsId, Set<MsgId> msgIds);
+
+	List<VoteMessageItem> findAllByParentMsgIdIn(Set<MsgId> parentMsgIds);
+
+	long countByParentMsgIdAndTypeAndHiddenIsFalse(MsgId parentMsgId, VoteMessageItem.Type type);
+
+	List<VoteMessageItem> findAllByAuthorGxsIdAndTypeAndHiddenIsFalse(GxsId authorGxsId, VoteMessageItem.Type type);
+
+	List<VoteMessageItem> findAllByParentMsgIdAndAuthorGxsIdAndHiddenIsFalse(MsgId parentMsgId, GxsId authorGxsId);
 }

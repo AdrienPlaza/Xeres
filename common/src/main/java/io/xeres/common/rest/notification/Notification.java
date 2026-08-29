@@ -42,6 +42,12 @@ import io.xeres.common.rest.notification.forum.AddOrUpdateForumGroups;
 import io.xeres.common.rest.notification.forum.AddOrUpdateForumMessages;
 import io.xeres.common.rest.notification.forum.SetForumGroupMessagesReadState;
 import io.xeres.common.rest.notification.forum.SetForumMessageReadState;
+import io.xeres.common.rest.notification.journal.AddOrUpdateJournalComments;
+import io.xeres.common.rest.notification.journal.AddOrUpdateJournalGroups;
+import io.xeres.common.rest.notification.journal.AddOrUpdateJournalMessages;
+import io.xeres.common.rest.notification.journal.AddOrUpdateJournalVotes;
+import io.xeres.common.rest.notification.journal.SetJournalGroupMessagesReadState;
+import io.xeres.common.rest.notification.journal.SetJournalMessageReadState;
 import io.xeres.common.rest.notification.status.StatusNotification;
 
 /**
@@ -81,6 +87,13 @@ import io.xeres.common.rest.notification.status.StatusNotification;
 		@Type(value = FileTrendNotification.class, name = "file_trend"),
 		// Status
 		@Type(value = StatusNotification.class, name = "status"),
+		// Journals
+		@Type(value = AddOrUpdateJournalGroups.class, name = "add_or_update_journal_groups"),
+		@Type(value = AddOrUpdateJournalMessages.class, name = "add_or_update_journal_messages"),
+		@Type(value = AddOrUpdateJournalComments.class, name = "add_or_update_journal_comments"),
+		@Type(value = AddOrUpdateJournalVotes.class, name = "add_or_update_journal_votes"),
+		@Type(value = SetJournalGroupMessagesReadState.class, name = "set_journal_group_messages_read_state"),
+		@Type(value = SetJournalMessageReadState.class, name = "set_journal_message_read_state"),
 })
 public interface Notification
 {

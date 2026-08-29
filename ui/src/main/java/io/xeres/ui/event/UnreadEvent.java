@@ -32,6 +32,7 @@ public record UnreadEvent(Element element, boolean unread) implements Synchronou
 		FILE,
 		CHAT,
 		BOARD,
-		CHANNEL
+		CHANNEL,
+		JOURNAL
 	}
 }

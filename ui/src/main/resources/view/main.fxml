@@ -143,6 +143,13 @@
                     <!--suppress Annotator -->
                     <fx:include fx:id="boardsView" source="board/board_view.fxml"/>
                 </Tab>
+                <Tab fx:id="journalTab" text="%main.journals">
+                    <graphic>
+                        <FontIcon iconLiteral="mdi2b-book-open-page-variant"/>
+                    </graphic>
+                    <!--suppress Annotator -->
+                    <fx:include fx:id="journalsView" source="journal/journal_view.fxml"/>
+                </Tab>
                 <Tab fx:id="fileTab" text="%main.files">
                     <graphic>
                         <FontIcon iconLiteral="mdi2f-folder-network"/>

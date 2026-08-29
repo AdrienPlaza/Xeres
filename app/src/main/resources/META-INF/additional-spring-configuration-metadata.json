@@ -84,6 +84,11 @@
             "name": "xrs.service.reputation.enabled",
             "type": "java.lang.Boolean",
             "description": "Enable the reputation service."
+        },
+        {
+            "name": "xrs.service.journal.enabled",
+            "type": "java.lang.Boolean",
+            "description": "Enable the journal service, used for friend-to-friend articles (Reddit/Twitter-like feed)."
         }
     ]
 }

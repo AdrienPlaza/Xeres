@@ -52,6 +52,9 @@ import io.xeres.ui.controller.forum.ForumEditorWindowController;
 import io.xeres.ui.controller.forum.ForumGroupWindowController;
 import io.xeres.ui.controller.help.HelpWindowController;
 import io.xeres.ui.controller.id.AddRsIdWindowController;
+import io.xeres.ui.controller.journal.JournalArticleWindowController;
+import io.xeres.ui.controller.journal.JournalGroupWindowController;
+import io.xeres.ui.controller.journal.JournalMessageWindowController;
 import io.xeres.ui.controller.messaging.BroadcastWindowController;
 import io.xeres.ui.controller.messaging.MessagingWindowController;
 import io.xeres.ui.controller.qrcode.CameraWindowController;
@@ -113,6 +116,7 @@ public class WindowManager implements SmartLifecycle
 	private final ForumClient forumClient;
 	private final BoardClient boardClient;
 	private final ChannelClient channelClient;
+	private final JournalClient journalClient;
 	private final LocationClient locationClient;
 	private final ShareClient shareClient;
 	private final MarkdownService markdownService;
@@ -140,7 +144,7 @@ public class WindowManager implements SmartLifecycle
 
 	private boolean isBusy;
 
-	public WindowManager(FxWeaver fxWeaver, ProfileClient profileClient, IdentityClient identityClient, MessageClient messageClient, ForumClient forumClient, BoardClient boardClient, ChannelClient channelClient, LocationClient locationClient, ShareClient shareClient, MarkdownService markdownService, UriService uriService, ChatClient chatClient, NotificationClient notificationClient, GeneralClient generalClient, PreviewClient previewClient, ImageCache imageCache, SoundPlayerService soundPlayerService, ResourceBundle bundle, AppThemeManager appThemeManager, OwnCache ownCache)
+		public WindowManager(FxWeaver fxWeaver, ProfileClient profileClient, IdentityClient identityClient, MessageClient messageClient, ForumClient forumClient, BoardClient boardClient, ChannelClient channelClient, JournalClient journalClient, LocationClient locationClient, ShareClient shareClient, MarkdownService markdownService, UriService uriService, ChatClient chatClient, NotificationClient notificationClient, GeneralClient generalClient, PreviewClient previewClient, ImageCache imageCache, SoundPlayerService soundPlayerService, ResourceBundle bundle, AppThemeManager appThemeManager, OwnCache ownCache)
 	{
 		INSTANCE = this;
 		WindowManager.fxWeaver = fxWeaver;
@@ -150,6 +154,7 @@ public class WindowManager implements SmartLifecycle
 		this.forumClient = forumClient;
 		this.boardClient = boardClient;
 		this.channelClient = channelClient;
+		this.journalClient = journalClient;
 		this.locationClient = locationClient;
 		this.shareClient = shareClient;
 		this.markdownService = markdownService;
@@ -662,6 +667,43 @@ public class WindowManager implements SmartLifecycle
 						.setUserData(groupId)
 						.build()
 						.open());
+	}
+
+	public void openJournalCreation(long groupId)
+	{
+		Platform.runLater(() ->
+				UiWindow.builder(JournalGroupWindowController.class)
+						.setParent(rootWindow)
+						.setTitle(bundle.getString("journal.group.window-title"))
+						.setUserData(groupId)
+						.build()
+						.open());
+	}
+
+	public void openJournalArticle(long groupId)
+	{
+		Platform.runLater(() ->
+				UiWindow.builder(JournalArticleWindowController.class)
+						.setParent(rootWindow)
+						.setTitle(bundle.getString("journal.article.window-title"))
+						.setUserData(groupId)
+						.build()
+						.open());
+	}
+
+	public void openJournalMessage(long messageId)
+	{
+		Platform.runLater(() ->
+				getOpenedWindow(JournalMessageWindowController.class, String.valueOf(messageId)).ifPresentOrElse(Window::requestFocus,
+						() -> {
+							var controller = new JournalMessageWindowController(journalClient, generalClient, markdownService, bundle);
+							UiWindow.builder("/view/journal/journal_message_view.fxml", controller)
+									.setTitle(bundle.getString("journal.message.window-title"))
+									.setUserData(messageId)
+									.setLocalId(String.valueOf(messageId))
+									.build()
+									.open();
+						}));
 	}
 
 	public String getFullTitle()

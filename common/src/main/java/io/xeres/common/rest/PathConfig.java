@@ -42,5 +42,6 @@ public final class PathConfig
 	public static final String CONTACT_PATH = "/api/v1/contacts";
 	public static final String BOARDS_PATH = "/api/v1/boards";
 	public static final String CHANNELS_PATH = "/api/v1/channels";
+	public static final String JOURNALS_PATH = "/api/v1/journals";
 	public static final String REPUTATION_PATH = "/api/v1/reputation";
 }

@@ -28,6 +28,7 @@ import io.xeres.common.rest.notification.file.FileNotification;
 import io.xeres.common.rest.notification.file.FileSearchNotification;
 import io.xeres.common.rest.notification.file.FileTrendNotification;
 import io.xeres.common.rest.notification.forum.ForumNotification;
+import io.xeres.common.rest.notification.journal.JournalNotification;
 import io.xeres.common.rest.notification.status.StatusNotification;
 import io.xeres.common.util.RemoteUtils;
 import org.springframework.context.event.EventListener;
@@ -94,6 +95,16 @@ public class NotificationClient
 	{
 		return webClient.get()
 				.uri("/channel")
+				.retrieve()
+				.bodyToFlux(new ParameterizedTypeReference<>()
+				{
+				});
+	}
+
+	public Flux<ServerSentEvent<JournalNotification>> getJournalNotifications()
+	{
+		return webClient.get()
+				.uri("/journal")
 				.retrieve()
 				.bodyToFlux(new ParameterizedTypeReference<>()
 				{

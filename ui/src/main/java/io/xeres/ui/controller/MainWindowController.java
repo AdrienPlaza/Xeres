@@ -130,6 +130,9 @@ public class MainWindowController implements WindowController, SmartLifecycle
 	private Tab boardTab;
 
 	@FXML
+	private Tab journalTab;
+
+	@FXML
 	private Tab fileTab;
 
 	@FXML
@@ -699,6 +702,7 @@ public class MainWindowController implements WindowController, SmartLifecycle
 			case FILE -> addOrRemoveTabHighlight(fileTab, event.unread());
 			case BOARD -> addOrRemoveTabHighlight(boardTab, event.unread());
 			case CHANNEL -> addOrRemoveTabHighlight(channelTab, event.unread());
+			case JOURNAL -> addOrRemoveTabHighlight(journalTab, event.unread());
 		}
 	}
 

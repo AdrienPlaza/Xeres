@@ -29,6 +29,7 @@ import io.xeres.app.service.notification.file.FileNotificationService;
 import io.xeres.app.service.notification.file.FileSearchNotificationService;
 import io.xeres.app.service.notification.file.FileTrendNotificationService;
 import io.xeres.app.service.notification.forum.ForumNotificationService;
+import io.xeres.app.service.notification.journal.JournalNotificationService;
 import io.xeres.app.service.notification.status.StatusNotificationService;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -52,8 +53,9 @@ public class NotificationController
 	private final AvailabilityNotificationService availabilityNotificationService;
 	private final BoardNotificationService boardNotificationService;
 	private final ChannelNotificationService channelNotificationService;
+	private final JournalNotificationService journalNotificationService;
 
-	public NotificationController(StatusNotificationService statusNotificationService, ForumNotificationService forumNotificationService, FileNotificationService fileNotificationService, FileSearchNotificationService fileSearchNotificationService, FileTrendNotificationService fileTrendNotificationService, ContactNotificationService contactNotificationService, AvailabilityNotificationService availabilityNotificationService, BoardNotificationService boardNotificationService, ChannelNotificationService channelNotificationService)
+	public NotificationController(StatusNotificationService statusNotificationService, ForumNotificationService forumNotificationService, FileNotificationService fileNotificationService, FileSearchNotificationService fileSearchNotificationService, FileTrendNotificationService fileTrendNotificationService, ContactNotificationService contactNotificationService, AvailabilityNotificationService availabilityNotificationService, BoardNotificationService boardNotificationService, ChannelNotificationService channelNotificationService, JournalNotificationService journalNotificationService)
 	{
 		this.statusNotificationService = statusNotificationService;
 		this.forumNotificationService = forumNotificationService;
@@ -64,6 +66,7 @@ public class NotificationController
 		this.availabilityNotificationService = availabilityNotificationService;
 		this.boardNotificationService = boardNotificationService;
 		this.channelNotificationService = channelNotificationService;
+		this.journalNotificationService = journalNotificationService;
 	}
 
 	@GetMapping("/status")
@@ -92,6 +95,13 @@ public class NotificationController
 	public SseEmitter setupChannelNotification()
 	{
 		return channelNotificationService.addClient();
+	}
+
+	@GetMapping("/journal")
+	@Operation(summary = "Subscribes to journal notifications")
+	public SseEmitter setupJournalNotification()
+	{
+		return journalNotificationService.addClient();
 	}
 
 	@GetMapping("/file")

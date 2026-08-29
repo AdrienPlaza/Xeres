@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+  ~ Copyright (c) 2025-2026 by David Gerber - https://zapek.com
+  ~
+  ~ This file is part of Xeres.
+  ~
+  ~ Xeres is free software: you can redistribute it and/or modify
+  ~ it under the terms of the GNU General Public License as published by
+  ~ the Free Software Foundation, either version 3 of the License, or
+  ~ (at your option) any later version.
+  ~
+  ~ Xeres is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  ~ GNU General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU General Public License
+  ~ along with Xeres.  If not, see <http://www.gnu.org/licenses/>.
+  -->
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import org.kordamp.ikonli.javafx.FontIcon?>
+<VBox alignment="TOP_LEFT" xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml" fx:controller="io.xeres.ui.controller.journal.JournalViewController" spacing="6">
+    <HBox alignment="CENTER_LEFT" spacing="6">
+        <HBox.margin>
+            <Insets bottom="4.0" left="4.0" right="4.0" top="4.0"/>
+        </HBox.margin>
+        <Button fx:id="createJournal" mnemonicParsing="false" text="%journal.view.create-journal">
+            <graphic>
+                <FontIcon iconLiteral="mdi2f-folder-plus"/>
+            </graphic>
+        </Button>
+        <Button fx:id="newArticle" mnemonicParsing="false" text="%journal.view.new-article">
+            <graphic>
+                <FontIcon iconLiteral="mdi2p-pencil-plus"/>
+            </graphic>
+        </Button>
+    </HBox>
+    <HBox VBox.vgrow="ALWAYS" spacing="6">
+        <VBox spacing="4" prefWidth="180" minWidth="160">
+            <TextField fx:id="searchField" promptText="%journal.view.search"/>
+            <ToggleButton fx:id="filterAll" mnemonicParsing="false" text="%journal.view.filter.all" maxWidth="Infinity"/>
+            <ToggleButton fx:id="filterLiked" mnemonicParsing="false" text="%journal.view.filter.liked" maxWidth="Infinity"/>
+            <ToggleButton fx:id="filterFavorited" mnemonicParsing="false" text="%journal.view.filter.favorited" maxWidth="Infinity"/>
+            <ToggleButton fx:id="filterCommented" mnemonicParsing="false" text="%journal.view.filter.commented" maxWidth="Infinity"/>
+        </VBox>
+        <StackPane HBox.hgrow="ALWAYS">
+            <ListView fx:id="articleList" VBox.vgrow="ALWAYS"/>
+            <VBox fx:id="emptyView" alignment="CENTER" spacing="8" visible="false" managed="false">
+                <Label text="%journal.view.empty" styleClass="text-caption"/>
+            </VBox>
+        </StackPane>
+    </HBox>
+</VBox>

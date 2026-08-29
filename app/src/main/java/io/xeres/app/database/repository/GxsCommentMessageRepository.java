@@ -32,4 +32,8 @@ import java.util.Set;
 public interface GxsCommentMessageRepository extends JpaRepository<CommentMessageItem, Long>
 {
 	List<CommentMessageItem> findAllByGxsIdAndMsgIdIn(GxsId gxsId, Set<MsgId> msgIds);
+
+	List<CommentMessageItem> findAllByParentMsgIdIn(Set<MsgId> parentMsgIds);
+
+	long countByParentMsgId(MsgId parentMsgId);
 }

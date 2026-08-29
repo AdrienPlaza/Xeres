@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+  ~ Copyright (c) 2025-2026 by David Gerber - https://zapek.com
+  ~
+  ~ This file is part of Xeres.
+  ~
+  ~ Xeres is free software: you can redistribute it and/or modify
+  ~ it under the terms of the GNU General Public License as published by
+  ~ the Free Software Foundation, either version 3 of the License, or
+  ~ (at your option) any later version.
+  ~
+  ~ Xeres is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  ~ GNU General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU General Public License
+  ~ along with Xeres.  If not, see <http://www.gnu.org/licenses/>.
+  -->
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.*?>
+<VBox spacing="8" xmlns="http://javafx.com/javafx" xmlns:fx="http://javafx.com/fxml">
+    <VBox.margin>
+        <Insets bottom="8.0" left="8.0" right="8.0" top="8.0"/>
+    </VBox.margin>
+    <Label fx:id="titleLabel" styleClass="title-3" wrapText="true"/>
+    <Label fx:id="sourceLabel" styleClass="text-caption"/>
+    <Label fx:id="metaLabel" styleClass="text-caption"/>
+    <ScrollPane fitToWidth="true" VBox.vgrow="ALWAYS">
+        <content>
+            <VBox spacing="8">
+                <VBox fx:id="contentBox" spacing="4"/>
+                <ImageView fx:id="imageView" visible="false" managed="false"/>
+                <HBox spacing="8">
+                    <Button fx:id="likeButton" mnemonicParsing="false" text="%journal.message.like"/>
+                    <Button fx:id="dislikeButton" mnemonicParsing="false" text="%journal.message.dislike"/>
+                    <Button fx:id="favoriteButton" mnemonicParsing="false" text="%journal.message.favorite"/>
+                </HBox>
+                <Separator/>
+                <Label text="%journal.message.comments" styleClass="title-4"/>
+                <VBox fx:id="commentsBox" spacing="6"/>
+            </VBox>
+        </content>
+    </ScrollPane>
+    <HBox spacing="6" VBox.vgrow="NEVER">
+        <TextArea fx:id="commentInput" promptText="%journal.message.add-comment" prefRowCount="2" HBox.hgrow="ALWAYS"/>
+        <Button fx:id="sendComment" mnemonicParsing="false" text="%journal.message.send-comment"/>
+    </HBox>
+</VBox>

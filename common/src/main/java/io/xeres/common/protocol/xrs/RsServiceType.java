@@ -176,6 +176,11 @@ public enum RsServiceType
 	 */
 	GXS_REPUTATION(0x219, "gxsreputation", 1, 0, 1, 0),
 
+	/**
+	 * The journal service (friend-to-friend articles, Reddit/Twitter-like feed).
+	 */
+	GXS_JOURNALS(0x21A, "gxsjournals", 1, 0, 1, 0),
+
 	@RsDeprecated
 	GXS_RECOGN(0x220, null, 1, 0, 1, 0),
 
