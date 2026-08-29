@@ -37,21 +37,6 @@ public class FileSeeder extends FilePeer
 		chunkReceiver.setChunkMap(chunkMap);
 	}
 
-	public void setReceiving(boolean receiving)
-	{
-		chunkReceiver.setReceiving(receiving);
-	}
-
-	public boolean isReceiving()
-	{
-		return chunkReceiver.isReceiving();
-	}
-
-	public int getChunkNumber()
-	{
-		return chunkReceiver.getChunkNumber();
-	}
-
 	public boolean hasChunkMap()
 	{
 		return chunkReceiver.hasChunkMap();
@@ -62,8 +47,13 @@ public class FileSeeder extends FilePeer
 		return chunkReceiver.getChunkMap();
 	}
 
-	public void setChunkNumber(int chunkNumber)
+	public ChunkReceiver getChunkReceiver()
 	{
-		chunkReceiver.setChunkNumber(chunkNumber);
+		return chunkReceiver;
+	}
+
+	public void setWindowSize(int windowSize)
+	{
+		chunkReceiver.setWindowSize(windowSize);
 	}
 }

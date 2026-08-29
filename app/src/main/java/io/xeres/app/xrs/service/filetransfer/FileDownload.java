@@ -46,10 +46,16 @@ class FileDownload extends FileUpload
 
 	private final long id;
 	private final BitSet chunkMap;
+	private final BitSet verifiedChunks;
 	private final int nBits;
 	private final ChunkDistributor chunkDistributor;
 	private final Map<Integer, Chunk> chunks = new HashMap<>();
 	private long bytesWritten;
+
+	/// Guards the shared bookkeeping (chunk map, verified chunks, block tracking, byte counter) which can be
+	/// updated concurrently when several chunks are written in parallel on virtual threads. The actual
+	/// [FileChannel] write is kept outside the lock so distinct offsets can proceed concurrently.
+	private final Object ioLock = new Object();
 
 	public FileDownload(long id, File file, long size, BitSet chunkMap, FileTransferStrategy fileTransferStrategy)
 	{
@@ -58,6 +64,7 @@ class FileDownload extends FileUpload
 		fileSize = size;
 		nBits = (int) (size / CHUNK_SIZE + (size % CHUNK_SIZE != 0 ? 1 : 0));
 		this.chunkMap = chunkMap != null ? chunkMap : new BitSet(nBits);
+		this.verifiedChunks = new BitSet(nBits);
 		bytesWritten = (long) this.chunkMap.cardinality() * CHUNK_SIZE;
 		chunkDistributor = new ChunkDistributor(this.chunkMap, nBits, fileTransferStrategy);
 	}
@@ -72,7 +79,9 @@ class FileDownload extends FileUpload
 			OsUtils.setFileVisible(file.toPath(), false);
 			ensureSparseFile();
 			channel = randomAccessFile.getChannel();
-			lock = channel.lock(); // Exclusive lock
+			// No exclusive file lock: writes happen from a single thread (the transfer manager) and
+			// at disjoint offsets, so concurrent/parallel chunks don't need serialization. This also
+			// removes a bottleneck when several chunks are written at once.
 			return true;
 		}
 		catch (IOException e)
@@ -127,12 +136,15 @@ class FileDownload extends FileUpload
 	{
 		var buf = ByteBuffer.wrap(data);
 		var size = channel.write(buf, offset);
-		bytesWritten += size;
-		if (size != data.length)
+		synchronized (ioLock)
 		{
-			throw new IOException("Failed to write data, requested size: " + data.length + ", actually written: " + size);
+			bytesWritten += size;
+			if (size != data.length)
+			{
+				throw new IOException("Failed to write data, requested size: " + data.length + ", actually written: " + size);
+			}
+			markBlocksAsWritten(offset, size);
 		}
-		markBlocksAsWritten(offset, size);
 	}
 
 	@Override
@@ -140,7 +152,6 @@ class FileDownload extends FileUpload
 	{
 		try
 		{
-			lock.close();
 			channel.close();
 			randomAccessFile.close();
 		}
@@ -167,45 +178,60 @@ class FileDownload extends FileUpload
 	@Override
 	public BitSet getChunkMap()
 	{
-		return (BitSet) chunkMap.clone();
+		synchronized (ioLock)
+		{
+			return (BitSet) chunkMap.clone();
+		}
 	}
 
 	@Override
 	public boolean isComplete()
 	{
-		return chunkMap.cardinality() == nBits;
+		synchronized (ioLock)
+		{
+			return chunkMap.cardinality() == nBits;
+		}
 	}
 
 	@Override
 	public Optional<Integer> getNeededChunk(BitSet chunkMap)
 	{
-		return chunkDistributor.getNextChunk(chunkMap);
+		synchronized (ioLock)
+		{
+			return chunkDistributor.getNextChunk(chunkMap);
+		}
 	}
 
 	@Override
 	public boolean hasChunk(int index)
 	{
-		return chunkMap.get(index);
+		synchronized (ioLock)
+		{
+			return chunkMap.get(index);
+		}
 	}
 
 	private boolean isChunkAvailable(long offset, int chunkSize)
 	{
-		int chunkStart = (int) (offset / chunkSize);
-		int chunkEnd = (int) ((offset + chunkSize) / chunkSize);
-
-		if ((offset + chunkSize) % chunkSize != 0)
+		synchronized (ioLock)
 		{
-			chunkEnd++;
-		}
+			int chunkStart = (int) (offset / chunkSize);
+			int chunkEnd = (int) ((offset + chunkSize) / chunkSize);
 
-		for (var i = chunkStart; i < chunkEnd; i++)
-		{
-			if (!chunkMap.get(i))
+			if ((offset + chunkSize) % chunkSize != 0)
 			{
-				return false;
+				chunkEnd++;
 			}
+
+			for (var i = chunkStart; i < chunkEnd; i++)
+			{
+				if (!chunkMap.get(i))
+				{
+					return false;
+				}
+			}
+			return true;
 		}
-		return true;
 	}
 
 	private void markBlocksAsWritten(long offset, int size)
@@ -224,13 +250,55 @@ class FileDownload extends FileUpload
 	@Override
 	public Sha1Sum computeHash(long offset)
 	{
-		throw new IllegalStateException("Cannot compute hashes of files being downloaded");
+		// The channel is the random access file's channel, so reading from it concurrently with writes is fine.
+		return super.computeHash(offset);
+	}
+
+	@Override
+	public boolean isVerified(int chunk)
+	{
+		synchronized (ioLock)
+		{
+			return verifiedChunks.get(chunk);
+		}
+	}
+
+	@Override
+	public void setVerified(int chunk)
+	{
+		synchronized (ioLock)
+		{
+			verifiedChunks.set(chunk);
+		}
+	}
+
+	@Override
+	public boolean isFullyVerified()
+	{
+		synchronized (ioLock)
+		{
+			return verifiedChunks.cardinality() == nBits;
+		}
+	}
+
+	@Override
+	public void resetChunk(int chunk)
+	{
+		synchronized (ioLock)
+		{
+			chunkMap.clear(chunk);
+			verifiedChunks.clear(chunk);
+			chunks.remove(chunk);
+		}
 	}
 
 	@Override
 	public long getBytesWritten()
 	{
-		return bytesWritten;
+		synchronized (ioLock)
+		{
+			return bytesWritten;
+		}
 	}
 
 	@Override

@@ -30,7 +30,10 @@ import java.io.IOException;
 import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static io.xeres.app.xrs.service.filetransfer.FileTransferRsService.CHUNK_SIZE;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -53,7 +56,8 @@ class FileTransferAgentTest
 		var agent = new FileTransferAgent(fileTransferRsService, "foo", hash, fileProvider);
 
 		when(fileProvider.getFileSize()).thenReturn(1024L); // Same file size
-		when(fileProvider.read(0L, 1024)).thenReturn(new byte[1024]);
+		when(fileProvider.read(anyLong(), anyInt())).thenAnswer(invocation -> new byte[(int) invocation.getArgument(1)]);
+		when(fileTransferRsService.isWritable(any())).thenReturn(true);
 
 		agent.addLeecher(leecher, 0, 1024);
 		agent.process();
@@ -69,14 +73,17 @@ class FileTransferAgentTest
 
 		var agent = new FileTransferAgent(fileTransferRsService, "foo", hash, fileProvider);
 
-		when(fileProvider.getFileSize()).thenReturn(16384L); // Same file size
-		when(fileProvider.read(0L, 8192)).thenReturn(new byte[8192]);
+		// Use a file larger than a single tick can send (128 slices * 8 KB = 1 MB) so the leecher stays scheduled.
+		var fileSize = CHUNK_SIZE + 1L;
+		when(fileProvider.getFileSize()).thenReturn(fileSize); // Same file size
+		when(fileProvider.read(anyLong(), anyInt())).thenAnswer(invocation -> new byte[(int) invocation.getArgument(1)]);
+		when(fileTransferRsService.isWritable(any())).thenReturn(true);
 
-		agent.addLeecher(leecher, 0, 16384);
+		agent.addLeecher(leecher, 0, (int) fileSize);
 		agent.process();
 
 		assertTrue(agent.getNextProcessing().isAfter(Instant.now()));
 
-		verify(fileTransferRsService).sendData(eq(leecher), eq(hash), eq(16384L), eq(0L), any());
+		verify(fileTransferRsService).sendData(eq(leecher), eq(hash), eq(fileSize), eq(0L), any());
 	}
 }

@@ -34,6 +34,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /// Responsible for sending/receiving one file.
 /// There can be several leechers or seeders per file.
@@ -41,8 +43,30 @@ class FileTransferAgent
 {
 	private static final Logger log = LoggerFactory.getLogger(FileTransferAgent.class);
 
+	/// Computes chunk checksums off the manager thread so several chunks can be verified in parallel.
+	private static final ExecutorService crcExecutor = Executors.newVirtualThreadPerTaskExecutor();
+
 	/// Time after which a download or upload is considered stale.
 	private static final long IDLE_TIME = Duration.ofMinutes(5).toNanos();
+
+	/// Number of chunks (1 MB each) requested in advance from a seeder (pipelining window).
+	private static final int DOWNLOAD_WINDOW_CHUNKS = 16;
+
+	/// Delay between two processings while a transfer is active. Keeps the pipe full without busy looping.
+	private static final Duration ACTIVE_DELAY = Duration.ofMillis(10);
+
+	/// Delay between two processings while nothing is in progress (waiting for a chunk map, etc.).
+	private static final Duration IDLE_DELAY = Duration.ofMillis(250);
+
+	/// Maximum number of 8 KB slices sent to a leecher per processing tick. Bounds memory usage;
+	/// the writability check stops earlier if the socket buffer is full.
+	private static final int MAX_SLICES_PER_TICK = 128;
+
+	/// Delay between two processings of a leecher that still has data to send.
+	private static final Duration LEECHER_ACTIVE_DELAY = Duration.ofMillis(5);
+
+	/// Maximum time to wait for a chunk CRC answer before considering it verified anyway (avoids stalling).
+	private static final Duration CRC_TIMEOUT = Duration.ofSeconds(60);
 
 	private final FileTransferRsService fileTransferRsService;
 	private final FileProvider fileProvider;
@@ -54,6 +78,9 @@ class FileTransferAgent
 
 	private final Map<Location, FileLeecher> leechers = new LinkedHashMap<>();
 	private final Map<Location, FileSeeder> seeders = new LinkedHashMap<>();
+
+	/// Chunks that have been fully written but are awaiting CRC verification (chunk number -> request time).
+	private final Map<Integer, Instant> crcPending = new HashMap<>();
 
 	private final PriorityQueue<FilePeer> queue = new PriorityQueue<>();
 
@@ -88,6 +115,7 @@ class FileTransferAgent
 	{
 		seeders.computeIfAbsent(peer, _ -> {
 			var fileSeeder = new FileSeeder(peer);
+			fileSeeder.setWindowSize(DOWNLOAD_WINDOW_CHUNKS);
 			queue.add(fileSeeder);
 			return fileSeeder;
 		});
@@ -181,34 +209,73 @@ class FileTransferAgent
 
 	private void processPeers()
 	{
-		var filePeer = queue.poll();
-		switch (filePeer)
+		var now = Instant.now();
+		while (true)
 		{
-			case FileSeeder fileSeeder -> processSeeder(fileSeeder);
-			case FileLeecher fileLeecher -> processLeecher(fileLeecher);
-			case null ->
+			var filePeer = queue.peek();
+			if (filePeer == null || filePeer.getNextScheduling().isAfter(now))
 			{
-				// Empty queue
+				break;
 			}
-			default -> throw new IllegalStateException("Unhandled peer class");
+			queue.poll();
+			switch (filePeer)
+			{
+				case FileSeeder fileSeeder -> processSeeder(fileSeeder);
+				case FileLeecher fileLeecher -> processLeecher(fileLeecher);
+				case null ->
+				{
+					// Empty queue
+				}
+				default -> throw new IllegalStateException("Unhandled peer class");
+			}
 		}
-
 	}
 
 	private void processSeeder(FileSeeder fileSeeder)
 	{
-		if (fileSeeder.isReceiving())
+		var chunkReceiver = fileSeeder.getChunkReceiver();
+
+		// Drop the chunks that have been fully written from the in-flight set, and trigger CRC verification.
+		for (var it = chunkReceiver.getRequestedChunks().iterator(); it.hasNext(); )
 		{
-			lastActivity = System.nanoTime();
-			if (fileProvider.hasChunk(fileSeeder.getChunkNumber()))
+			var chunkNumber = it.next();
+			if (fileProvider.hasChunk(chunkNumber))
 			{
-				log.debug("Chunk {} is complete", fileSeeder.getChunkNumber());
-				fileSeeder.setReceiving(false);
+				it.remove();
+				boolean alreadyPending;
+				synchronized (crcPending)
+				{
+					alreadyPending = crcPending.containsKey(chunkNumber);
+				}
+				if (!fileProvider.isVerified(chunkNumber) && !alreadyPending
+						&& fileSeeder.hasChunkMap() && fileSeeder.getChunkMap().get(chunkNumber))
+				{
+					fileTransferRsService.sendSingleChunkCrcRequest(fileSeeder.getLocation(), hash, chunkNumber);
+					synchronized (crcPending)
+					{
+						crcPending.put(chunkNumber, Instant.now());
+					}
+				}
 			}
 		}
-		else
+
+		// Give up on CRC verification after a while so the transfer can finish even if a peer never answers.
+		var now = Instant.now();
+		synchronized (crcPending)
 		{
-			if (fileProvider.isComplete() && !done)
+			crcPending.entrySet().removeIf(entry -> {
+				if (Duration.between(entry.getValue(), now).compareTo(CRC_TIMEOUT) > 0)
+				{
+					fileProvider.setVerified(entry.getKey());
+					return true;
+				}
+				return false;
+			});
+		}
+
+		if (fileProvider.isComplete() && fileProvider.isFullyVerified())
+		{
+			if (!done)
 			{
 				log.debug("File is complete, size: {}, renaming to {}", fileProvider.getFileSize(), fileName);
 				stop();
@@ -216,28 +283,60 @@ class FileTransferAgent
 				fileTransferRsService.deactivateTunnels(hash);
 				var newPath = renameFile(fileProvider.getPath(), fileName);
 				setFileSecurity(newPath);
-				removePeer(fileSeeder.getLocation());
 				done = true; // Prevents closing the file several times (we might have several seeders)
-				return; // Don't reinsert in the queue
+			}
+			removePeer(fileSeeder.getLocation());
+			return; // Don't reinsert in the queue
+		}
+
+		if (fileSeeder.hasChunkMap())
+		{
+			// Keep several chunks in flight so the link stays saturated (pipelining).
+			while (chunkReceiver.getRequestedChunkCount() < chunkReceiver.getWindowSize())
+			{
+				var chunkNumber = getNextChunk(fileSeeder.getChunkMap());
+				if (chunkNumber.isEmpty())
+				{
+					break;
+				}
+				log.debug("Requesting chunk number {} to peer {}", chunkNumber.get(), fileSeeder.getLocation());
+				fileTransferRsService.sendDataRequest(fileSeeder.getLocation(), hash, fileProvider.getFileSize(), (long) chunkNumber.get() * FileTransferRsService.CHUNK_SIZE, FileTransferRsService.CHUNK_SIZE);
+				chunkReceiver.addRequestedChunk(chunkNumber.get());
+			}
+		}
+
+		// Stay active while there is data in flight so completed chunks are replaced promptly.
+		addNextScheduling(fileSeeder, chunkReceiver.getRequestedChunkCount() > 0 || !crcPending.isEmpty() ? ACTIVE_DELAY : IDLE_DELAY);
+	}
+
+	/// Called when a chunk CRC answer comes back. Verifies it against the locally computed hash.
+	///
+	/// @param chunkNumber the chunk number
+	/// @param expected    the checksum sent by the peer
+	void verifyChunk(int chunkNumber, Sha1Sum expected)
+	{
+		synchronized (crcPending)
+		{
+			// Mark as pending (replaces the request timestamp) while we compute the hash off-thread.
+			crcPending.put(chunkNumber, Instant.now());
+		}
+		crcExecutor.submit(() ->
+		{
+			var local = fileProvider.computeHash((long) chunkNumber * FileTransferRsService.CHUNK_SIZE);
+			if (local != null && local.equals(expected))
+			{
+				fileProvider.setVerified(chunkNumber);
 			}
 			else
 			{
-				if (fileSeeder.hasChunkMap())
-				{
-					getNextChunk(fileSeeder.getChunkMap()).ifPresent(chunkNumber -> {
-						log.debug("Requesting chunk number {} to peer {}", chunkNumber, fileSeeder.getLocation());
-						fileTransferRsService.sendDataRequest(fileSeeder.getLocation(), hash, fileProvider.getFileSize(), (long) chunkNumber * FileTransferRsService.CHUNK_SIZE, FileTransferRsService.CHUNK_SIZE);
-						fileSeeder.setChunkNumber(chunkNumber);
-						fileSeeder.setReceiving(true);
-					});
-				}
+				log.warn("Chunk {} CRC mismatch for hash {}, downloading it again", chunkNumber, hash);
+				fileProvider.resetChunk(chunkNumber);
 			}
-		}
-		// Calculating the next computation would require guessing when we need to ask for the
-		// next chunk. Right now we ask for 1 MB, but we should ask for smaller and progressively bigger (up to 1 MB).
-		addNextScheduling(fileSeeder, Duration.ofMillis(250)); // XXX: use a real computation... not sure it needs to be done in each process*()... maybe in the processPeer() only? check...
-		// XXX: also to know the bandwidth, we have to know to which tunnelId the virtual location maps to, then to which peer the tunnelId maps to and we finally got a bandwidth.
-		// then we also need to take into account the number of tunnels that are shared through that peer... what a mess. maybe we should push that info when creating the FileSeeder/Leecher?
+			synchronized (crcPending)
+			{
+				crcPending.remove(chunkNumber);
+			}
+		});
 	}
 
 	private void setFileSecurity(Path path)
@@ -251,9 +350,21 @@ class FileTransferAgent
 	private void processLeecher(FileLeecher fileLeecher)
 	{
 		var sliceSender = fileLeecher.getSliceSender();
-		var remaining = sliceSender.send();
-		lastActivity = System.nanoTime();
-		if (!remaining)
+		var sent = 0;
+		var more = true;
+		// Send as many slices as the socket accepts. The writability check provides back-pressure
+		// (no 50 ms artificial cap), while MAX_SLICES_PER_TICK bounds memory usage.
+		while (more && sent < MAX_SLICES_PER_TICK && fileTransferRsService.isWritable(fileLeecher.getLocation()))
+		{
+			more = sliceSender.send();
+			if (more)
+			{
+				sent++;
+				lastActivity = System.nanoTime();
+			}
+		}
+
+		if (!more)
 		{
 			// We just remove the leecher here and nothing else. The fileTransferManager will close the file
 			// when it's idle for some time, otherwise it would need to be reopened immediately for the
@@ -265,8 +376,7 @@ class FileTransferAgent
 				return;
 			}
 		}
-		// Here we could calculate the best time to send the next slice (8 KB) without overflowing our bandwidth
-		addNextScheduling(fileLeecher, Duration.ofMillis(50)); // XXX: see above. this is 160 KB/s...
+		addNextScheduling(fileLeecher, LEECHER_ACTIVE_DELAY);
 	}
 
 	private void addNextScheduling(FilePeer filePeer, Duration duration)

@@ -425,6 +425,26 @@ public class FileTransferRsService extends RsService implements TurtleRsClient
 		turtleRouter.stopMonitoringTunnels(encryptedHash);
 	}
 
+	/// Checks if data can be sent to a location without overflowing its send buffer.
+	///
+	/// @param location the location (real or virtual)
+	/// @return true if writable, or if it can't be determined
+	public boolean isWritable(Location location)
+	{
+		if (turtleRouter.isVirtualPeer(location))
+		{
+			return turtleRouter.isWritable(location);
+		}
+		var peer = peerConnectionManager.getPeerByLocation(location.getId());
+		return peer == null || peer.getCtx() == null || peer.getCtx().channel() == null || peer.getCtx().channel().isWritable();
+	}
+
+	/// Flushes all deferred (batched) file data writes. Called once per manager iteration.
+	public void flushDeferredWrites()
+	{
+		peerConnectionManager.flushDeferred();
+	}
+
 	/// Sends request as a client.
 	///
 	/// @param location  the location to send to (can be virtual)
@@ -531,7 +551,7 @@ public class FileTransferRsService extends RsService implements TurtleRsClient
 			else
 			{
 				var item = new FileTransferDataItem(offset, totalSize, hash, data);
-				peerConnectionManager.writeItem(location, item, this);
+				peerConnectionManager.writeItemDeferred(location, item, this);
 			}
 		}
 		else

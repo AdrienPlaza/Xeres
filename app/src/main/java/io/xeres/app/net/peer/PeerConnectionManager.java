@@ -38,6 +38,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.EnumSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
@@ -55,6 +56,9 @@ public class PeerConnectionManager
 	private final ApplicationEventPublisher publisher;
 
 	private final Map<Long, PeerConnection> peers = new ConcurrentHashMap<>();
+
+	/// Connections that have pending (non-flushed) writes. Flushed in a single batch by [flushDeferred].
+	private final Set<PeerConnection> dirtyConnections = ConcurrentHashMap.newKeySet();
 
 	PeerConnectionManager(StatusNotificationService statusNotificationService, AvailabilityNotificationService availabilityNotificationService, ApplicationEventPublisher publisher)
 	{
@@ -138,6 +142,40 @@ public class PeerConnectionManager
 		return new DefaultItemFuture(new FailedFuture<>(null, new IllegalStateException("Peer with connection " + location + " not found while trying to write item. User disconnected?")));
 	}
 
+	/// Writes an item without flushing. The write is sent to the socket only after [flushDeferred]
+	/// is called, allowing several items to be coalesced into a single flush (less syscall overhead).
+	///
+	/// @param location  the target location
+	/// @param item      the item to write
+	/// @param rsService the service concerned
+	/// @return an ItemFuture containing the item's write state and item serialized state
+	public ItemFuture writeItemDeferred(Location location, Item item, RsService rsService)
+	{
+		var peer = peers.get(location.getId());
+		if (peer != null)
+		{
+			return setOutgoingAndWriteItemDeferred(peer, item, rsService);
+		}
+		return new DefaultItemFuture(new FailedFuture<>(null, new IllegalStateException("Peer with connection " + location + " not found while trying to write item. User disconnected?")));
+	}
+
+	/// Flushes all connections that have pending deferred writes.
+	public void flushDeferred()
+	{
+		if (dirtyConnections.isEmpty())
+		{
+			return;
+		}
+		dirtyConnections.forEach(peer -> {
+			var ctx = peer.getCtx();
+			if (ctx != null)
+			{
+				ctx.flush();
+			}
+		});
+		dirtyConnections.clear();
+	}
+
 	/// Writes an item to a peer.
 	///
 	/// @param peerConnection the target peer
@@ -216,6 +254,12 @@ public class PeerConnectionManager
 		return writeItem(peerConnection, item);
 	}
 
+	private ItemFuture setOutgoingAndWriteItemDeferred(PeerConnection peerConnection, Item item, RsService rsService)
+	{
+		item.setOutgoing(peerConnection.getCtx().alloc(), rsService);
+		return writeItemDeferred(peerConnection, item);
+	}
+
 	private static ItemFuture writeItem(PeerConnection peerConnection, Item item)
 	{
 		var rawItem = item.serializeItem(EnumSet.noneOf(SerializationFlags.class));
@@ -224,6 +268,17 @@ public class PeerConnectionManager
 		log.trace("Message content: {}", rawItem);
 		peerConnection.incrementSentCounter(size);
 		return new DefaultItemFuture(peerConnection.getCtx().writeAndFlush(rawItem), size);
+	}
+
+	private ItemFuture writeItemDeferred(PeerConnection peerConnection, Item item)
+	{
+		var rawItem = item.serializeItem(EnumSet.noneOf(SerializationFlags.class));
+		var size = rawItem.getSize(); // get it before it's written
+		log.debug("==> {}", item);
+		log.trace("Message content: {}", rawItem);
+		peerConnection.incrementSentCounter(size);
+		dirtyConnections.add(peerConnection);
+		return new DefaultItemFuture(peerConnection.getCtx().write(rawItem), size);
 	}
 
 	private void updateCurrentUsersCount()

@@ -51,7 +51,9 @@ class FileDownloadTest
 
 		if (SystemUtils.IS_OS_WINDOWS)
 		{
-			assertEquals("This file is set as sparse\n", OsUtils.shellExecute("fsutil", "sparse", "queryflag", file.getAbsolutePath()));
+			// fsutil output is localized, so accept both English ("sparse") and French ("fragmenté").
+			var sparseFlag = OsUtils.shellExecute("fsutil", "sparse", "queryflag", file.getAbsolutePath()).toLowerCase();
+			assertTrue(sparseFlag.contains("sparse") || sparseFlag.contains("fragment"), "Expected a sparse flag, got: " + sparseFlag);
 		}
 		else if (SystemUtils.IS_OS_LINUX || SystemUtils.IS_OS_MAC)
 		{

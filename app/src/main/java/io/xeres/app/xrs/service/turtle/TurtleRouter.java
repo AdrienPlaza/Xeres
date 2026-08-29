@@ -61,6 +61,12 @@ public interface TurtleRouter
 	/// @return true if it's a virtual turtle peer
 	boolean isVirtualPeer(Location location);
 
+	/// Checks if data can be written to a location without overflowing its send buffer.
+	///
+	/// @param location the location (can be a virtual turtle peer)
+	/// @return true if the underlying channel is writable, or if it can't be determined
+	boolean isWritable(Location location);
+
 	/// Performs a tunnel search.
 	///
 	/// @param search the search string

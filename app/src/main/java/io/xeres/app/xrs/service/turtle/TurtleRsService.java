@@ -235,7 +235,7 @@ public class TurtleRsService extends RsService implements RsServiceMaster<Turtle
 		{
 			item.setDirection(TunnelDirection.SERVER);
 			log.trace("Sending turtle item {} to {} (server)", item, tunnel.getDestination());
-			var itemFuture = peerConnectionManager.writeItem(tunnel.getDestination(), item, this);
+			var itemFuture = peerConnectionManager.writeItemDeferred(tunnel.getDestination(), item, this);
 			turtleStatisticsBuffer.addToDataDownload(itemFuture.getSize());
 			tunnel.addTransferredBytes(itemFuture.getSize());
 		}
@@ -243,7 +243,7 @@ public class TurtleRsService extends RsService implements RsServiceMaster<Turtle
 		{
 			item.setDirection(TunnelDirection.CLIENT);
 			log.trace("Sending turtle item {} to {} (client)", item, tunnel.getSource());
-			var itemFuture = peerConnectionManager.writeItem(tunnel.getSource(), item, this);
+			var itemFuture = peerConnectionManager.writeItemDeferred(tunnel.getSource(), item, this);
 			turtleStatisticsBuffer.addToDataUpload(itemFuture.getSize());
 			tunnel.addTransferredBytes(itemFuture.getSize());
 		}
@@ -329,6 +329,24 @@ public class TurtleRsService extends RsService implements RsServiceMaster<Turtle
 	public boolean isVirtualPeer(Location location)
 	{
 		return virtualPeers.containsKey(location.getLocationIdentifier());
+	}
+
+	@Override
+	public boolean isWritable(Location virtualLocation)
+	{
+		var tunnelId = virtualPeers.get(virtualLocation.getLocationIdentifier());
+		if (tunnelId == null)
+		{
+			return true;
+		}
+		var tunnel = localTunnels.get(tunnelId);
+		if (tunnel == null)
+		{
+			return true;
+		}
+		var realPeer = tunnel.getSource().equals(ownLocation) ? tunnel.getDestination() : tunnel.getSource();
+		var peer = peerConnectionManager.getPeerByLocation(realPeer.getId());
+		return peer == null || peer.getCtx() == null || peer.getCtx().channel() == null || peer.getCtx().channel().isWritable();
 	}
 
 	private void handleReceiveGenericTunnel(TurtleGenericTunnelItem item, Tunnel tunnel)

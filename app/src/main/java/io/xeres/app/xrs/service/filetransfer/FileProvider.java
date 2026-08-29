@@ -56,4 +56,37 @@ interface FileProvider
 	long getId();
 
 	Sha1Sum computeHash(long offset);
+
+	/// Marks a chunk as verified (its CRC matched). Optional, defaults to always verified.
+	///
+	/// @param chunk the chunk number
+	default void setVerified(int chunk)
+	{
+		// Nothing to do by default
+	}
+
+	/// Tells if a chunk has been verified.
+	///
+	/// @param chunk the chunk number
+	/// @return true if verified
+	default boolean isVerified(int chunk)
+	{
+		return true;
+	}
+
+	/// Tells if every chunk has been verified.
+	///
+	/// @return true if fully verified
+	default boolean isFullyVerified()
+	{
+		return true;
+	}
+
+	/// Forgets a chunk's data so it gets downloaded again (used after a CRC mismatch).
+	///
+	/// @param chunk the chunk number
+	default void resetChunk(int chunk)
+	{
+		// Nothing to do by default
+	}
 }

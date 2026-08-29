@@ -38,6 +38,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 
@@ -78,6 +80,10 @@ class FileTransferManager implements Runnable
 	private final Map<Sha1Sum, FileTransferAgent> downloads = new HashMap<>(); // files that we are downloading (client)
 	private final Map<Sha1Sum, FileTransferAgent> uploads = new HashMap<>(); // files that we are uploading (serving)
 
+	/// Executes the actual disk writes off the manager thread so that several chunks arriving from different
+	/// seeders can be written in parallel (FileChannel writes at distinct offsets are safe to run concurrently).
+	private final ExecutorService writeExecutor = Executors.newVirtualThreadPerTaskExecutor();
+
 	private final List<FileProgress> downloadsProgress = new ArrayList<>();
 	private final List<FileProgress> uploadsProgress = new ArrayList<>();
 
@@ -106,6 +112,7 @@ class FileTransferManager implements Runnable
 				processAction(action);
 				processDownloads();
 				processUploads();
+				fileTransferRsService.flushDeferredWrites();
 			}
 			catch (InterruptedException _)
 			{
@@ -120,6 +127,7 @@ class FileTransferManager implements Runnable
 	private void cleanup()
 	{
 		downloads.forEach((hash, download) -> fileService.suspendDownload(hash, download.getFileProvider().getChunkMap()));
+		writeExecutor.close();
 	}
 
 	private Action getNextAction() throws InterruptedException
@@ -407,17 +415,21 @@ class FileTransferManager implements Runnable
 			return;
 		}
 
-		try
+		log.trace("Writing file {}, offset: {}, length: {}", download.getFileName(), offset, data.length);
+		// XXX: update location stats for writing (see how RS does it)
+		var fileProvider = download.getFileProvider();
+		var finalDownload = download;
+		writeExecutor.submit(() ->
 		{
-			log.trace("Writing file {}, offset: {}, length: {}", download.getFileName(), offset, data.length);
-			// XXX: update location stats for writing (see how RS does it)
-			var fileProvider = download.getFileProvider();
-			fileProvider.write(offset, data);
-		}
-		catch (IOException e)
-		{
-			log.error("Failed to write to file", e);
-		}
+			try
+			{
+				fileProvider.write(offset, data);
+			}
+			catch (IOException e)
+			{
+				log.error("Failed to write to file {}", finalDownload.getFileName(), e);
+			}
+		});
 	}
 
 	private void actionReceiveChunkMapRequest(Location location, Sha1Sum hash, boolean isLeecher)
@@ -502,7 +514,11 @@ class FileTransferManager implements Runnable
 	private void actionReceiveChunkCrc(Location location, Sha1Sum hash, int chunkNumber, Sha1Sum checkSum)
 	{
 		log.debug("Received chunk crc from {}", location);
-		// XXX: handle! need to check leecher...
+		var download = downloads.get(hash);
+		if (download != null)
+		{
+			download.verifyChunk(chunkNumber, checkSum);
+		}
 	}
 
 	private static void handleLeecherRequest(Location location, FileTransferAgent upload, Sha1Sum hash, long offset, int chunkSize)
